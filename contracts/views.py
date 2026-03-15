@@ -1,89 +1,76 @@
-from django.views import View
-from django.shortcuts import redirect, render, get_object_or_404
-from django.contrib.auth.mixins import LoginRequiredMixin
-from django.utils import timezone
-from bids.models import Bid
-from .models import Contract, ChatMessage
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from django.shortcuts import get_object_or_404
 from django.db import transaction
-from django.contrib import messages
+from django.utils import timezone
 from django.db.models import Q
+from bids.models import Bid
+from projects.models import Project
+from .models import Contract, ChatMessage
+from .serializers import ContractSerializer, ChatMessageSerializer
 
 
-class AcceptBidView(LoginRequiredMixin, View):
+class AcceptBidView(APIView):
+    permission_classes = [IsAuthenticated]
     def post(self, request, bid_id):
-        bid =  get_object_or_404(Bid, id=bid_id)
+        bid = get_object_or_404(Bid, id=bid_id)
         project = bid.project
-        
         if project.client != request.user:
-            messages.error(request, "Sizda bu huquq yoq")
-            return redirect("project_detail", pk=project.id)
+            return Response({'error': "Sizda bu huquq yoq", 'status':status.HTTP_403_FORBIDDEN})
         
         if project.status != "open":
-            messages.error(request, "Bu loyiha uchun freelancer tanlangan yoki loyiha yopilgan.")
-            return redirect("project_detail", pk=project.id)
+            return Response({'error': 'Freelancer allaqachon tanlangan', 'status':status.HTTP_400_BAD_REQUEST})
         
         with transaction.atomic():
-            bid.status = 'accepted'
+            bid.status = "accepted"
             bid.save()
-            project.bids.exclude(id=bid_id).update(status='rejected')
-            project.status = 'in_progress'
+            project.bids.exclude(id=bid_id).update(status="rejected")
+            project.status = "in_progress"
             project.save()
-            
-            Contract.objects.create(
+            contract = Contract.objects.create(
                 project=project,
                 client=project.client,
                 freelancer=bid.freelancer,
                 agreed_price=bid.price
             )
-            
-            messages.success(request, f"Muvafaqiyatli! {bid.freelancer.username} bilan shartnoma tuzildi.")
-        
-        return redirect('project_detail', pk=project.id)
-
-
-class FinishContractView(LoginRequiredMixin, View):
+        serializer = ContractSerializer(contract)
+        return Response(serializer.data, status=201)
+    
+    
+class FinishContractView(APIView):
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        contract = get_object_or_404(
-            Contract,
-            pk=pk,
-            client=request.user
-        )
-        try:
-            with transaction.atomic():
-                contract.status = "finished"
-                contract.finished_at = timezone.now()
-                contract.save()
-                project = contract.project
-                project.status = "completed"
-                project.save()
-                messages.success(request, f"Tabriklaymiz! '{project.title}' loyihasi muvaffaqiyatli yakunlandi.")
-        except Exception as e:
-            messages.error(request, f"Xatolik yuz berdi: {e}")
-        return redirect("project_detail", pk=contract.project.id)
+        contract = get_object_or_404(Contract,pk=pk,client=request.user)
+        with transaction.atomic():
+            contract.status = "finished"
+            contract.finished_at = timezone.now()
+            contract.save()
+            project = contract.project
+            project.status = "completed"
+            project.save()
+        return Response({"message": "Loyiha muvaffaqiyatli yakunlandi"})
     
     
-class ContractDetailView(LoginRequiredMixin, View):
+class ContractDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, pk):
-        contract = get_object_or_404(Contract, Q(client=request.user) | Q(freelancer=request.user), pk=pk)
-        chat_messages = contract.messages.all().order_by('created_at')
-        review = getattr(contract, 'review', None)
-        context = {
-            'contract': contract,
-            'chat_messages': chat_messages,
-            'review': review
-        }
-        return render(request, 'contracts/contract_detail.html', context)
+        contract = get_object_or_404(Contract,Q(client=request.user) | Q(freelancer=request.user),pk=pk)
+        messages = contract.messages.all()
+        serializer = ChatMessageSerializer(messages, many=True)
+        contract_serializer = ContractSerializer(contract)
+        return Response({"contract": contract_serializer.data,"messages": serializer.data})
 
     def post(self, request, pk):
-        contract = get_object_or_404(Contract, Q(client=request.user) | Q(freelancer=request.user), pk=pk)
-        text = request.POST.get('message_text')
+        contract = get_object_or_404(Contract,Q(client=request.user) | Q(freelancer=request.user),pk=pk)
         if contract.status == "finished":
-            messages.info(request, "Shartnoma yakunlangan, xabar yuborib bolmaydi.")
-            return redirect('contract_detail', pk=pk)
-        text = request.POST.get('message_text', '').strip()
-        if text:
-            ChatMessage.objects.create(contract=contract,sender=request.user,text=text)
-        else:
-            messages.error(request, "Xabar matni bo'sh bolishi mumkin emas.")  
-        return redirect('contract_detail', pk=pk)
+            return Response({"error": "Shartnoma yakunlangan"},status=status.HTTP_400_BAD_REQUEST)
+        text = request.data.get("text")
+        if not text:
+            return Response({"error": "Xabar bo'sh"},status=status.HTTP_400_BAD_REQUEST)
+        message = ChatMessage.objects.create(contract=contract,sender=request.user,text=text)
+        serializer = ChatMessageSerializer(message)
+        return Response(serializer.data, status=201)

@@ -18,3 +18,5 @@ class Bid(models.Model):
     class Meta:
         unique_together = ('project', 'freelancer')
         
+    def __str__(self):
+        return f"{self.freelancer} - {self.project}"

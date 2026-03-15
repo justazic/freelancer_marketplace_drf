@@ -1,30 +1,27 @@
-from django.views import View
-from django.shortcuts import redirect, get_object_or_404
-from django.contrib.auth.mixins import LoginRequiredMixin
-from django.contrib import messages
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from django.shortcuts import get_object_or_404
 from contracts.models import Contract
 from .models import Review
+from .serializers import ReviewSerializer
 
 
-class CreateReviewView(LoginRequiredMixin, View):
+class CreateReviewView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def post(self, request, contract_id):
         contract = get_object_or_404(Contract,id=contract_id,client=request.user)
+
         if contract.status != "finished":
-            messages.error(request, "Loyiha hali tugamagan")
-            return redirect("project_detail", pk=contract.project.id)
+            return Response({"error": "Loyiha hali tugamagan"},status=status.HTTP_400_BAD_REQUEST)
 
         if hasattr(contract, "review"):
-            messages.error(request, "Review allaqachon yozilgan")
-            return redirect("project_detail", pk=contract.project.id)
-        rating = request.POST.get("rating")
+            return Response({"error": "Review allaqachon yozilgan"},status=status.HTTP_400_BAD_REQUEST)
+        serializer = ReviewSerializer(data=request.data)
 
-        if int(rating) < 1 or int(rating) > 5:
-            messages.error(request, "Rating 1 dan 5 gacha bolishi kerak")
-            return redirect("project_detail", pk=contract.project.id)
-        Review.objects.create(
-            contract=contract,
-            rating=rating,
-            comment=request.POST.get("comment")
-        )
-        messages.success(request, "Review muvaffaqiyatli yozildi")
-        return redirect("project_detail", pk=contract.project.id)
+        if serializer.is_valid():
+            serializer.save(contract=contract)
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)

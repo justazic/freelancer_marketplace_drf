@@ -1,8 +1,8 @@
 from django.urls import path
-from .views import AcceptBidView, ContractDetailView, FinishContractView
+from .views import AcceptBidView,FinishContractView,ContractDetailView
 
 urlpatterns = [
-    path("accept-bid/<int:bid_id>/", AcceptBidView.as_view(), name="accept_bid"),
-    path("finish/<int:pk>/", FinishContractView.as_view(), name="finish_contract"),
-    path('contract/<int:pk>/', ContractDetailView.as_view(), name='contract_detail'),
+    path("contracts/accept-bid/<int:bid_id>/", AcceptBidView.as_view()),
+    path("contracts/finish/<int:pk>/", FinishContractView.as_view()),
+    path("contracts/<int:pk>/", ContractDetailView.as_view()),
 ]

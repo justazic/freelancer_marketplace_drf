@@ -1,51 +1,42 @@
-from django.shortcuts import redirect, render, get_object_or_404
-from django.views import View
-from django.contrib.auth.mixins import LoginRequiredMixin
-from django.contrib import messages
-from projects.models import Project
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from django.shortcuts import get_object_or_404
 from .models import Bid
+from .serializers import BidSerializer
+from projects.models import Project
 
-
-class BidCreateView(LoginRequiredMixin, View):
-
+class BidCreateView(APIView):
+    permission_classes = [IsAuthenticated]
     def post(self, request, project_id):
-        if request.user.role != "freelancer":
-            messages.error(request, "Faqat freelancerlar taklif yubora oladi.")
-            return redirect("project_list")
-        project = get_object_or_404(Project, id=project_id)
-
-        if project.status != "open":
-            messages.error(request, "Bu loyiha uchun bid yuborib bolmaydi")
-            return redirect("project_detail", pk=project_id)
-
-        if Bid.objects.filter(project=project, freelancer=request.user).exists():
-            messages.error(request, "Siz bu loyiha uchun allaqachon bid yuborgansiz")
-            return redirect("project_detail", pk=project_id)
+        if request.user.role != 'freelancer':
+            return Response({"error": "Faqat freelancerlar bid yubora oldi", "status":status.HTTP_400_BAD_REQUEST})
         
-        price = request.POST.get('price')
-        message_text = request.POST.get('message')
-        try:
-            if not price or float(price) <= 0:
-                messages.error(request, "Narx 0 dan baland bolishi kerak.")
-                return redirect('project_detail', pk=project_id)
-            if not message_text or len(message_text.strip()) < 10:
-                messages.error(request, "Taklif xabari kamida 10 ta belgidan iborat bolishi kerak.")
-                return redirect('project_detail', pk=project_id)
-            Bid.objects.create(project=project,freelancer=request.user,price=price,message=message_text,)
-            messages.success(request, "Sizning taklifingiz muvaffaqiyatli yuborildi!")
-        except ValueError:
-            messages.error(request, "Narxni raqam shaklida kiriting.")
-        except Exception as e:
-            messages.error(request, f"Kutilmagan xatolik yuz berdi: {e}")   
-        return redirect("project_detail", pk=project_id)
+        project = get_object_or_404(Project, id=project_id)
+        
+        if project.status != "open":
+            return Response({"error": "Bu loyiha uchun bid yuborib bolmaydi", 'status':status.HTTP_400_BAD_REQUEST})
+        
+        if Bid.objects.filter(project=project, freelancer=request.user).exists():
+            return Response({"error": "Siz Bu loyiha uchun allaqachon bid yuborgansiz"})
+        
+        serializer = BidSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(freelancer=request.user, project=project)
+            return Response(serializer.data, status.HTTP_201_CREATED)
+        return Response(serializer.errors, status.HTTP_400_BAD_REQUEST)
     
     
+class MyBidsListView(APIView):
+    permission_classes = [IsAuthenticated]
     
-class MyBidsListView(LoginRequiredMixin, View):
     def get(self, request):
         if request.user.role != 'freelancer':
-            return redirect('project_list')
-        
-        my_bids = Bid.objects.filter(freelancer=request.user).select_related('project')
-        return render(request, 'bids/my_bids.html', {'bids': my_bids})
+            return Response({"error": 'Faqat freelancerlar', 'status':status.HTTP_403_FORBIDDEN})
+        bids = Bid.objects.filter(freelancer=request.user).select_related('project')
+        serializer = BidSerializer(bids, many=True)
+        return Response(serializer.data)
     
+    
+        
