@@ -1,10 +1,10 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework import status
 from django.contrib.auth import authenticate
 from .models import User
-from .serializers import UserSerializer, RegisterSerializer
+from .serializers import RegisterContactSerializer,UserSerializer, RegisterSerializer, LoginSerializer, LogoutSerializer
 from .utils import send_otp_email, send_otp_phone_number
 from rest_framework_simplejwt.tokens import RefreshToken
 from bids.models import Bid
@@ -13,8 +13,16 @@ from projects.models import Project
 from reviews.models import Review
 
 
+
 class RegisterView(APIView):
+    permission_classes = [AllowAny]
+    serializer_class = RegisterContactSerializer
     def post(self, request):
+        serializer = RegisterContactSerializer(data=request.data)
+        serializer = RegisterContactSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status.HTTP_400_BAD_REQUEST)
+        
         contact = request.data.get('contact')
         
         if not contact:
@@ -39,6 +47,7 @@ class RegisterView(APIView):
     
     
 class VerifyView(APIView):
+    permission_classes = [AllowAny]
     def post(self, request):
         code = request.data.get("code")
         session_code = request.session.get('otp')
@@ -48,6 +57,8 @@ class VerifyView(APIView):
     
     
 class RegisterProfileView(APIView):
+    permission_classes = [AllowAny]
+    serializer_class = RegisterSerializer
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
         if serializer.is_valid():
@@ -62,7 +73,13 @@ class RegisterProfileView(APIView):
     
     
 class LoginView(APIView):
+    permission_classes = [AllowAny]
+    serializer_class = LoginSerializer
     def post(self, request):
+        serializer = LoginSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status.HTTP_400_BAD_REQUEST)
+        
         username = request.data.get("username")
         password = request.data.get("password")
         user = authenticate(username=username, password=password)
@@ -78,6 +95,7 @@ class LoginView(APIView):
         
 class ProfileUpdateView(APIView):
     permission_classes = [IsAuthenticated]
+    serializer_class = UserSerializer
     def put(self, request):
         user = request.user
         serializer = UserSerializer(user, data=request.data, partial=True)
@@ -88,19 +106,23 @@ class ProfileUpdateView(APIView):
     
     def patch(self, request):
         user = request.user
-        serilizer=UserSerializer(user, data=request.data, partial=True)
-        if serilizer.is_valid():
-            serilizer.save()
-            return Response(serilizer.data)
-        return Response(serilizer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer=UserSerializer(user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     
 class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
+    serializer_class = LoginSerializer
     def post(self, request):
+        serializer = LoginSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status.HTTP_400_BAD_REQUEST)
+        
         try:
-            refresh_token = request.data['refresh']
-            token = RefreshToken(refresh_token)
+            token = RefreshToken(serializer.validated_data['refresh'])
             token.blacklist()
             return Response({'message':' Akkountdan muvafaqiyatli chiqdingiz'})
         
@@ -111,7 +133,7 @@ class LogoutView(APIView):
 
 class DashboardView(APIView):
     permission_classes = [IsAuthenticated]
-    
+    serializer_class = UserSerializer
     def get(self, request):
         if request.user.role == "client":
             my_projects = Project.objects.filter(client=request.user).order_by("-created_at")

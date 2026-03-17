@@ -7,3 +7,4 @@ class BidSerializer(serializers.ModelSerializer):
     class Meta:
         model = Bid
         fields = "__all__"
+        read_only_fields = ('project', 'freelancer')

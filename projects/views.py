@@ -10,7 +10,7 @@ from rest_framework.pagination import PageNumberPagination
 
 
 class ProjectListView(APIView):
-
+    serializer_class = ProjectSerializer
     def get(self, request):
         projects = Project.objects.filter(status='open')
         q = request.query_params.get('q')
@@ -33,7 +33,7 @@ class ProjectListView(APIView):
 
 class ProjectCreateView(APIView):
     permission_classes = [IsAuthenticated]
-    
+    serializer_class = ProjectSerializer
     def post(self, request):
         if request.user.role != 'client':
             return Response({"error": "Faqat client loyiha yaratishi mumkin", 'status': status.HTTP_403_FORBIDDEN})
@@ -45,6 +45,7 @@ class ProjectCreateView(APIView):
     
     
 class ProjectDetailView(APIView):
+    serializer_class = ProjectSerializer
     def get(self, request, pk):
         project = get_object_or_404(Project, pk=pk)
         serrializer = ProjectSerializer(project)
@@ -53,7 +54,7 @@ class ProjectDetailView(APIView):
     
 class ProjectUpdateView(APIView):
     permission_classes = [IsAuthenticated]
-    
+    serializer_class = ProjectSerializer
     def get_object(self, request, pk):
         project = get_object_or_404(Project, pk=pk, client=request.user)
         if project.status != 'open':
@@ -85,6 +86,7 @@ class ProjectUpdateView(APIView):
     
 class CancelProjectView(APIView):
     permission_classes = [IsAuthenticated]
+    serializer_class = ProjectSerializer
     def post(self, request, pk):
         project = get_object_or_404(Project, pk=pk, client=request.user)
         

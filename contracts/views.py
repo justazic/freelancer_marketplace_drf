@@ -14,6 +14,7 @@ from .serializers import ContractSerializer, ChatMessageSerializer
 
 class AcceptBidView(APIView):
     permission_classes = [IsAuthenticated]
+    serializer_class = ContractSerializer
     def post(self, request, bid_id):
         bid = get_object_or_404(Bid, id=bid_id)
         project = bid.project
@@ -41,7 +42,7 @@ class AcceptBidView(APIView):
     
 class FinishContractView(APIView):
     permission_classes = [IsAuthenticated]
-
+    serializer_class = ContractSerializer
     def post(self, request, pk):
         contract = get_object_or_404(Contract,pk=pk,client=request.user)
         with transaction.atomic():
@@ -56,11 +57,14 @@ class FinishContractView(APIView):
     
 class ContractDetailView(APIView):
     permission_classes = [IsAuthenticated]
-
+    serializer_class = ChatMessageSerializer
     def get(self, request, pk):
         contract = get_object_or_404(Contract,Q(client=request.user) | Q(freelancer=request.user),pk=pk)
         messages = contract.messages.all()
         serializer = ChatMessageSerializer(messages, many=True)
+        if serializer.is_valid():
+            serializer.save(contract=contract, sender=request.user)
+    
         contract_serializer = ContractSerializer(contract)
         return Response({"contract": contract_serializer.data,"messages": serializer.data})
 
@@ -73,4 +77,4 @@ class ContractDetailView(APIView):
             return Response({"error": "Xabar bo'sh"},status=status.HTTP_400_BAD_REQUEST)
         message = ChatMessage.objects.create(contract=contract,sender=request.user,text=text)
         serializer = ChatMessageSerializer(message)
-        return Response(serializer.data, status=201)
+        return Response(serializer.data, status.HTTP_201_CREATED)
